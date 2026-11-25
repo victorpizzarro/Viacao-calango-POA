@@ -1,6 +1,6 @@
 # Contratos da API
 
-**Estado:** módulo Frota implementado. A documentação navegável está no Swagger (`/docs`) e o documento OpenAPI em `/openapi.json`. Mudanças de contrato exigem atualização deste arquivo.
+**Estado:** módulo Frota e cadastro de Motoristas implementados. A documentação navegável está no Swagger (`/docs`) e o documento OpenAPI em `/openapi.json`. Mudanças de contrato exigem atualização deste arquivo.
 
 ## Padrões
 
@@ -43,6 +43,9 @@ Todo erro tem o mesmo formato:
 | PATCH | `/api/v1/onibus/{id}/quilometragem` | Frota | 200 | Registrar quilometragem |
 | POST | `/api/v1/onibus/{id}/revisoes` | Frota | 200 | Concluir revisão |
 | GET | `/api/v1/onibus/alocacao-ideal` | Frota | 200 | Calcular a combinação ideal de ônibus |
+| POST | `/api/v1/motoristas` | Motoristas | 201 | Cadastrar motorista |
+| GET | `/api/v1/motoristas` | Motoristas | 200 | Listar motoristas |
+| GET | `/api/v1/motoristas/{id}` | Motoristas | 200 | Consultar motorista |
 
 ### Frota
 
@@ -57,3 +60,26 @@ Todo erro tem o mesmo formato:
 Essas rotas retornam `id`, `tipo`, `capacidade`, `quilometragem_total`, `quilometragem_ultima_revisao`, `km_desde_revisao`, `precisa_revisao` e `disponivel_para_operacao`.
 
 **`GET /onibus/alocacao-ideal?passageiros=60`** retorna `passageiros`, `capacidades`, `total_de_onibus` e `lugares_vazios`. Minimiza os lugares vazios e, no empate, o número de ônibus. É apenas um cálculo: não altera viagens nem considera os ônibus existentes (ADR-011).
+
+### Motoristas
+
+**`POST /api/v1/motoristas`** recebe somente o nome obrigatório. Nome ausente, nulo, vazio ou composto apenas por espaços em branco retorna 422 (`DADOS_INVALIDOS`). O UUID é gerado pelo sistema. Nomes repetidos são permitidos.
+
+```json
+{ "nome": "Maria da Silva" }
+```
+
+Retorna 201 com o motorista persistido:
+
+```json
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "nome": "Maria da Silva"
+}
+```
+
+**`GET /api/v1/motoristas`** retorna 200 com um array de objetos com `id` e `nome`, sem ordem garantida. Sem cadastros, retorna `[]`.
+
+**`GET /api/v1/motoristas/{id}`** retorna 200 com `id` e `nome`. UUID malformado retorna 422 (`DADOS_INVALIDOS`); UUID válido sem cadastro retorna 404 (`NAO_ENCONTRADO`). Os erros seguem o formato compartilhado acima.
+
+Esta entrega contempla apenas o cadastro. O cálculo e a persistência da escala serão integrados em uma entrega futura.

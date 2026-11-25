@@ -2,7 +2,7 @@
 
 API REST acadêmica baseada no minimundo da Viação Calango (`Minimundo_1IHM_Passageiros.pdf`), em **Java 21 + Spring Boot 4**. A arquitetura é um **monólito modular em camadas, organizado por DDD**, com **Value Objects** no domínio.
 
-> **Estado atual:** somente o módulo **Frota** está implementado. Viagens, Passagens e Motoristas entram nos próximos ciclos, seguindo o mesmo molde (veja [docs/ARQUITETURA.md](docs/ARQUITETURA.md)).
+> **Estado atual:** o módulo **Frota** e o **cadastro de Motoristas** estão implementados. Viagens, Passagens e a escala de motoristas entram nos próximos ciclos. Veja as rotas em [docs/CONTRATOS_API.md](docs/CONTRATOS_API.md).
 
 ## Requisitos
 
@@ -31,6 +31,14 @@ A primeira execução baixa o Maven e as dependências e cria as tabelas pelas m
 3. `GET /api/v1/onibus?precisa_revisao=true` — lista os ônibus a encaminhar para revisão.
 4. `POST /api/v1/onibus/{id}/revisoes` — conclui a revisão; `km_desde_revisao` volta a 0.
 5. `GET /api/v1/onibus/alocacao-ideal?passageiros=60` — combinação com o mínimo de lugares vazios.
+
+## Roteiro para demonstrar Motoristas no Swagger
+
+1. `POST /api/v1/motoristas` — envie `{"nome":"Maria da Silva"}`; retorna 201 com `id` (UUID gerado) e `nome`.
+2. `GET /api/v1/motoristas` — lista os cadastros; retorna `[]` se não houver motoristas.
+3. `GET /api/v1/motoristas/{id}` — consulte usando o UUID retornado pelo POST.
+
+Nome ausente ou em branco e UUID malformado retornam 422. Um UUID válido sem cadastro retorna 404.
 
 ## Qualidade
 
