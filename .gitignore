@@ -1,0 +1,44 @@
+# Build Java / Maven
+target/
+.mvn/wrapper/maven-wrapper.jar
+dependency-reduced-pom.xml
+pom.xml.versionsBackup
+pom.xml.releaseBackup
+
+# IDE / OS
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+.apt_generated_tests/
+nbproject/
+bin/
+out/
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
+
+# Segredos e dados locais
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Certificados e chaves nunca vao para o repositorio
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
