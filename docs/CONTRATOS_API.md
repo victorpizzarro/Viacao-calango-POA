@@ -53,6 +53,7 @@ Todo erro tem o mesmo formato:
 | POST | `/api/v1/viagens` | Viagens | 201 | Criar viagem em uma rota |
 | GET | `/api/v1/viagens` | Viagens | 200 | Listar viagens |
 | GET | `/api/v1/viagens/{id}` | Viagens | 200 | Consultar viagem |
+| GET | `/api/v1/viagens/{id}/preco` | Viagens | 200 | Consultar preço do trecho |
 | POST | `/api/v1/viagens/{id}/escala` | Motoristas | 201 | Planejar e reservar escala completa |
 | GET | `/api/v1/viagens/{id}/escala` | Motoristas | 200 | Consultar escala persistida |
 
@@ -104,7 +105,7 @@ Retorna 201 com o motorista persistido:
 
 ### Origem do percurso de Viagens
 
-Foi reutilizado somente o recorte necessário de `origin/feature/viagens` (`ca28350`, autor Thiago Farias): entidades `Viagem`, `Rota` e `Parada`, identificadores, km/minutos acumulados, repositórios, serviços de cadastro e DTOs. Configuração e controller de viagem foram limitados a cadastro/consulta; precificação não foi incorporada. Os mapas foram tornados concorrentes para atender chamadas HTTP simultâneas.
+Foi reutilizado somente o recorte necessário de `origin/feature/viagens` (`ca28350`, autor Thiago Farias): entidades `Viagem`, `Rota` e `Parada`, identificadores, km/minutos acumulados, repositórios, serviços de cadastro e DTOs. Na conciliação com a branch oficial, foram incorporados os beans de precificação e cálculo de trecho e a rota de consulta de preço, preservando a consulta de viagem por UUID e o Swagger. Os repositórios usam métodos sincronizados para proteger leitura, escrita e cópia das listagens; Viagens mantém LinkedHashMap e sua ordem de inserção, e Rotas mantém HashMap sem promessa de ordem.
 
 `Viagem` tem UUID, rota, `data_hora_partida` e status `AGENDADA`. Cada parada tem seu UUID, nome, ordem, `km_desde_origem` e `minutos_desde_origem`. Trechos são os pares consecutivos de paradas ordenadas, seguindo a representação de `TrechoRota`: distância por diferença de km acumulados e horários por partida da viagem mais minutos acumulados. O adaptador exige km crescentes, diferenças inteiras e horários crescentes, sem arredondar distâncias para o planejador.
 
@@ -171,3 +172,9 @@ A migração **`V4__escalas_motoristas.sql`** cria `motorista_periodo_dirigido`,
 #### Validação automatizada
 
 `EscalasAplicacaoTest` sobe o servidor HTTP real em porta aleatória e H2 com Flyway. Sem mocks de planejador ou persistência, verifica: descanso exato de 12h e troca em Juiz de Fora; 11h59 com HTTP 409 e zero registros; reserva sobreposta sem períodos dirigidos; duas chamadas aguardando o bloqueio real no banco, com apenas um 201 e um 409; rollback após falha no segundo insert; validações/erros compartilhados; OpenAPI e regressão dos endpoints de Frota (cadastro, consulta, quilometragem, revisão e alocação ideal). A base não tinha testes de Frota; essa cobertura foi acrescentada. Os testes existentes de cadastro e `PlanejadorEscalaTest` continuam executados pelo `./mvnw -B -ntp verify` com Java 21.
+
+### Conciliação de Viagens
+
+`GET /api/v1/viagens/{id}/preco?origem=Rio&destino=Juiz%20de%20Fora&data_compra=2026-11-25T08:00:00-03:00` usa os nomes das paradas da rota oficial e a data de compra opcional (padrão: agora). Mantém o cálculo oficial: tarifa de 0,50 por km, desconto de 10% no percurso completo e mais 5% com antecedência mínima de sete dias. Retorna `distancia_km`, `preco_centavos`, `preco_reais`, `percurso_completo` e `desconto_antecedencia`, conforme `PrecoResponse`.
+
+Permanecem pendentes a entrada de Passagens, a persistência definitiva de Viagens e a consulta no backend da autorização de troca por parada. A conciliação dos arquivos não resolve essas pendências.

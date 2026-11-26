@@ -4,18 +4,18 @@ import br.com.viacaocalango.api.modules.viagens.domain.entity.Viagem;
 import java.util.*;
 
 public class ViagemRepositoryImpl implements ViagemRepository {
-    private final Map<UUID, Viagem> dados = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<UUID, Viagem> dados = new LinkedHashMap<>();
 
-    public Viagem salvar(Viagem viagem) {
+    public synchronized Viagem salvar(Viagem viagem) {
         dados.put(viagem.id(), viagem);
         return viagem;
     }
 
-    public Optional<Viagem> buscar(UUID id) {
+    public synchronized Optional<Viagem> buscar(UUID id) {
         return Optional.ofNullable(dados.get(id));
     }
 
-    public List<Viagem> listar() {
+    public synchronized List<Viagem> listar() {
         return new ArrayList<>(dados.values());
     }
 }
