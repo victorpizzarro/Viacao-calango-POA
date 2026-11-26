@@ -57,3 +57,20 @@ Todo erro tem o mesmo formato:
 Essas rotas retornam `id`, `tipo`, `capacidade`, `quilometragem_total`, `quilometragem_ultima_revisao`, `km_desde_revisao`, `precisa_revisao` e `disponivel_para_operacao`.
 
 **`GET /onibus/alocacao-ideal?passageiros=60`** retorna `passageiros`, `capacidades`, `total_de_onibus` e `lugares_vazios`. Minimiza os lugares vazios e, no empate, o número de ônibus. É apenas um cálculo: não altera viagens nem considera os ônibus existentes (ADR-011).
+
+### Passagens
+
+**`GET /viagens/{id}/disponibilidade`** retorna `viagem_id`, `capacidade` e `trechos`. Cada trecho liga duas paradas consecutivas e traz `parada_origem_id`, `parada_origem_nome`, `parada_destino_id`, `parada_destino_nome`, `lugares_ocupados` e `lugares_disponiveis`. A capacidade é controlada por trecho: quem desce numa parada libera o lugar para quem embarca nela. Reservas vencidas não ocupam lugar.
+
+**`POST /passagens`** recebe `viagem_id`, `parada_origem_id`, `parada_destino_id`, `passageiro_nome`, `canal` (`INTERNET` ou `GUICHE`) e `local_venda`. A passagem nasce `RESERVADA`, com o preço fixado na compra e a reserva válida por 15 minutos (`reservada_ate`). Retorna `id`, `viagem_id`, `parada_origem_id`, `parada_destino_id`, `passageiro_nome`, `canal`, `local_venda`, `preco_centavos`, `status` e `reservada_ate`.
+
+- `local_venda` é obrigatório no `GUICHE` e deve ser um local de venda da rota; na `INTERNET` não é aceito (422).
+- A origem deve vir antes do destino no percurso e ambas devem pertencer à viagem (422).
+- Viagem que já partiu (409) e trecho sem lugar disponível (409) violam regras de negócio.
+- A compra bloqueia a viagem até gravar a passagem, de modo que vendas simultâneas não ultrapassam a capacidade.
+
+**`POST /pagamentos`** recebe `passagem_id`, `forma` (`CARTAO` ou `DINHEIRO`) e `token_cartao`. A internet aceita somente cartão e o guichê somente dinheiro (409). O `token_cartao` é obrigatório no cartão; nenhum dado de cartão é armazenado. Retorna `id`, `passagem_id`, `forma`, `valor_centavos`, `status` (`APROVADO` ou `RECUSADO`), `status_passagem` e `registrado_em`.
+
+- Pagamento recusado também retorna 201: a tentativa é registrada e a reserva continua válida. Com token iniciado por `recusar` o gateway simulado nega o pagamento.
+- Pagamento aprovado muda a passagem para `CONFIRMADA`.
+- Passagem já paga (409) e reserva vencida (409) não aceitam novo pagamento.
