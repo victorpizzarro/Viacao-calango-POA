@@ -1,6 +1,6 @@
 # Contratos da API
 
-**Estado:** Frota, cadastro, histórico e escala de Motoristas implementados; recorte de rotas e viagens integrado para fornecer o percurso. A documentação navegável está no Swagger (`/docs`) e o documento OpenAPI em `/openapi.json`. Mudanças de contrato exigem atualização deste arquivo.
+**Estado:** Frota, Passagens, cadastro, histórico e escala de Motoristas implementados; recorte de rotas e viagens integrado para fornecer o percurso. A documentação navegável está no Swagger (`/docs`) e o documento OpenAPI em `/openapi.json`. Mudanças de contrato exigem atualização deste arquivo.
 
 ## Padrões
 
@@ -36,6 +36,9 @@ Todo erro tem o mesmo formato:
 
 | Método | Caminho | Módulo | Sucesso | Propósito |
 |---|---|---|---|---|
+| GET | `/api/v1/viagens/{id}/disponibilidade` | Passagens | 200 | Consultar ocupação por segmento |
+| POST | `/api/v1/passagens` | Passagens | 201 | Reservar passagem |
+| POST | `/api/v1/pagamentos` | Passagens | 201 | Registrar pagamento |
 | GET | `/health` | sistema | 200 | Status da API |
 | POST | `/api/v1/onibus` | Frota | 201 | Criar ônibus |
 | GET | `/api/v1/onibus` | Frota | 200 | Listar a frota (filtro `precisa_revisao`) |
@@ -139,7 +142,7 @@ O servidor usa todos os motoristas cadastrados e lê `motorista_periodo_dirigido
 
 Uma transação `READ_COMMITTED` cobre bloqueios, leitura do histórico/reservas, planejamento e todos os inserts. Todas as linhas dos candidatos são bloqueadas por `SELECT ... FOR UPDATE` em ordem de UUID, inclusive motoristas sem histórico. **Depois dos bloqueios**, o servidor lê novamente as alocações e os períodos; uma solicitação que esperou enxerga as reservas confirmadas pela anterior. A gravação do histórico também participa desse protocolo. O bloqueio no banco funciona entre instâncias da aplicação; não depende de um mutex Java. Bloquear todos os candidatos prioriza consistência e serializa os planejamentos neste recorte local.
 
-A migração **`V4__escalas_motoristas.sql`** cria `motorista_periodo_dirigido`, `motorista_escala` e `motorista_escala_trecho`, com FKs para cadastro/Frota, índices e uma escala por UUID de viagem. Todas as branches publicadas foram inspecionadas após `fetch`: V1 é Frota, V2 é cadastro, V3 está em `origin/feat/passagens` (`e347583`); V4 estava livre. Passagens não foi incorporada. `viagem_id` é referência lógica ao UUID de Viagens, pois a branch de origem não publica tabela de viagens.
+A migração **`V4__escalas_motoristas.sql`** cria `motorista_periodo_dirigido`, `motorista_escala` e `motorista_escala_trecho`, com FKs para cadastro/Frota, índices e uma escala por UUID de viagem. Todas as branches publicadas foram inspecionadas após `fetch`: V1 é Frota, V2 é cadastro, V3 está em `origin/feat/passagens` (`e347583`); V4 estava livre. A integração de Passagens incorpora agora a V3 original, mantendo V1, V2 e V4 sem alteração. `viagem_id` é referência lógica ao UUID de Viagens, pois a branch de origem não publica tabela de viagens.
 
 #### Roteiro para o Swagger (`/docs`)
 
@@ -177,4 +180,67 @@ A migração **`V4__escalas_motoristas.sql`** cria `motorista_periodo_dirigido`,
 
 `GET /api/v1/viagens/{id}/preco?origem=Rio&destino=Juiz%20de%20Fora&data_compra=2026-11-25T08:00:00-03:00` usa os nomes das paradas da rota oficial e a data de compra opcional (padrão: agora). Mantém o cálculo oficial: tarifa de 0,50 por km, desconto de 10% no percurso completo e mais 5% com antecedência mínima de sete dias. Retorna `distancia_km`, `preco_centavos`, `preco_reais`, `percurso_completo` e `desconto_antecedencia`, conforme `PrecoResponse`.
 
-Permanecem pendentes a entrada de Passagens, a persistência definitiva de Viagens e a consulta no backend da autorização de troca por parada. A conciliação dos arquivos não resolve essas pendências.
+Permanecem pendentes a persistência definitiva de Viagens e a consulta no backend da autorização de troca por parada. A conciliação dos arquivos não resolve essas pendências.
+
+### Passagens
+
+**`GET /viagens/{id}/disponibilidade`** retorna `viagem_id`, `capacidade` e `trechos`. Cada trecho liga duas paradas consecutivas e traz `parada_origem_id`, `parada_origem_nome`, `parada_destino_id`, `parada_destino_nome`, `lugares_ocupados` e `lugares_disponiveis`. A capacidade é controlada por trecho: quem desce numa parada libera o lugar para quem embarca nela. Reservas vencidas não ocupam lugar.
+
+**`POST /passagens`** recebe `viagem_id`, `parada_origem_id`, `parada_destino_id`, `passageiro_nome`, `canal` (`INTERNET` ou `GUICHE`) e `local_venda`. A passagem nasce `RESERVADA`, com o preço fixado na compra e a reserva válida por 15 minutos (`reservada_ate`). Retorna `id`, `viagem_id`, `parada_origem_id`, `parada_destino_id`, `passageiro_nome`, `canal`, `local_venda`, `preco_centavos`, `status` e `reservada_ate`.
+
+- `local_venda` é obrigatório no `GUICHE` e deve ser um local de venda da rota; na `INTERNET` não é aceito (422).
+- A origem deve vir antes do destino no percurso e ambas devem pertencer à viagem (422).
+- Viagem que já partiu (409) e trecho sem lugar disponível (409) violam regras de negócio.
+- A compra bloqueia a viagem até gravar a passagem, de modo que vendas simultâneas não ultrapassam a capacidade.
+
+**`POST /pagamentos`** recebe `passagem_id`, `forma` (`CARTAO` ou `DINHEIRO`) e `token_cartao`. A internet aceita somente cartão e o guichê somente dinheiro (409). O `token_cartao` é obrigatório no cartão; nenhum dado de cartão é armazenado. Retorna `id`, `passagem_id`, `forma`, `valor_centavos`, `status` (`APROVADO` ou `RECUSADO`), `status_passagem` e `registrado_em`.
+
+- Pagamento recusado também retorna 201: a tentativa é registrada e a reserva continua válida. Com token iniciado por `recusar` o gateway simulado nega o pagamento.
+- Pagamento aprovado muda a passagem para `CONFIRMADA`.
+- Passagem já paga (409) e reserva vencida (409) não aceitam novo pagamento.
+
+### Venda integrada com Viagens, Frota e Escalas
+
+Há um único adaptador Spring de `ViagensParaVenda`: `ViagensParaVendaAdapter`. A origem dos dados é:
+
+| Campo | Fonte |
+|---|---|
+| UUID, partida, status | `ViagemService` oficial; somente viagem `AGENDADA` é vendável |
+| UUIDs, nomes e ordem das paradas | `viagem.rota().getParadas()` oficial, ordenado pela rota |
+| Ônibus selecionado | `motorista_escala`, consultado por `EscalaService` |
+| Capacidade | `OnibusService.buscar(escala.onibusId()).capacidade().lugares()`; nenhum valor padrão |
+| Preço final em centavos | `PrecoFinalViagemService`, extração do cálculo já usado na consulta de preço; delega distância e preço base a `TrechoRotaService` e `PrecoViagemService`, preservando tarifa, descontos e arredondamento oficiais |
+| Momento da compra | `Clock` compartilhado; consulta de preço aceita `data_compra` para cotar nas mesmas condições |
+| Locais de venda | Não há cadastro oficial em Viagens; lista vazia, sem inferir guichês a partir dos nomes de paradas |
+
+Viagem inexistente retorna 404. Viagem existente sem escala retorna 409 `REGRA_DE_NEGOCIO` por capacidade indisponível, na compra e na disponibilidade. Venda por `INTERNET` funciona sem `local_venda`. Enquanto não houver fonte oficial de locais de venda, a compra por `GUICHE` retorna 409 `REGRA_DE_NEGOCIO` com mensagem de locais não cadastrados. Não foi criado cadastro paralelo.
+
+A compra usa uma transação `READ_COMMITTED`. `obterComBloqueio` exige transação externa (`MANDATORY`) e executa `SELECT ... FOR UPDATE` sobre a linha da escala da viagem. O bloqueio é mantido pelo mesmo DataSource/transação JPA até confirmar ou desfazer a gravação da passagem, cobrindo a leitura da ocupação. Não depende do monitor dos mapas em memória. Uma compra que esperou consulta as reservas já confirmadas antes de verificar a última vaga. Reservas vencidas não consomem capacidade; o pagamento aprovado mantém a ocupação e confirma a passagem. Essa solução usa a escala persistida existente sem criar uma tabela de viagens.
+
+Exemplo de fluxo no Swagger (substitua os UUIDs pelos retornados): cadastre a rota Rio–Juiz de Fora–BH do roteiro anterior, viagem futura, ônibus, dois motoristas e escala. Consulte `/api/v1/viagens/{id}/preco?origem=Rio&destino=Juiz%20de%20Fora` e reserve:
+
+```json
+{
+  "viagem_id": "UUID_DA_VIAGEM",
+  "parada_origem_id": "UUID_DO_RIO",
+  "parada_destino_id": "UUID_DE_JUIZ_DE_FORA",
+  "passageiro_nome": "Maria",
+  "canal": "INTERNET"
+}
+```
+
+Em `POST /api/v1/pagamentos`, use o `id` da passagem:
+
+```json
+{
+  "passagem_id": "UUID_DA_PASSAGEM",
+  "forma": "CARTAO",
+  "token_cartao": "aprovado-teste"
+}
+```
+
+O gateway é o simulado da branch de Passagens. Compare `valor_centavos` do pagamento, `preco_centavos` da passagem e a cotação do mesmo trecho na mesma condição de antecedência. Consulte `/api/v1/viagens/{id}/disponibilidade`: Rio–Juiz de Fora ocupa apenas o primeiro segmento; o embarque em Juiz de Fora pode usar o lugar no segmento seguinte.
+
+`VendaIntegradaTest` usa HTTP, Flyway, JPA, planejador e Frota reais: ônibus selecionado de 23 lugares entre veículos de capacidades diferentes; preço parcial e completo com descontos, pagamento aprovado, ocupação por segmento, viagem inexistente (404), trecho invertido/estranho (422), ausência de escala/guichês (409), exigência de transação externa e duas transações bloqueadas disputando a última vaga (um 201, um 409, exatamente 23 reservas persistidas). Os 38 testes anteriores permanecem na execução.
+
+Continuam pendentes a persistência definitiva de Viagens e a autorização oficial de troca por parada no backend. Depois de um reinício, as viagens em memória precisam de tratamento na etapa de persistência: esta entrega não recria nem inventa UUIDs para viagens anteriores.

@@ -44,7 +44,10 @@ public class OpenApiConfig {
                 .tags(
                         List.of(
                                 tag("frota", "Onibus, quilometragem, revisoes e alocacao ideal"),
-                                tag("sistema", "Status da API")));
+                                tag("sistema", "Status da API"),
+                                tag(
+                                        "passagens",
+                                        "Disponibilidade por trecho, reservas e pagamentos")));
     }
 
     private ApiResponse erro(String descricao) {

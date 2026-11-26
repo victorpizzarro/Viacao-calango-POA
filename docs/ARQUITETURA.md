@@ -18,7 +18,7 @@ A escolha por um monólito modular, e não por microsserviços, atende ao tamanh
 |---|---|---|
 | Frota | Implementado | Ônibus de 23, 28 ou 32 lugares (leito, semi-leito e executivo), controle de quilometragem, revisão a cada 10.000 km e alocação ideal de ônibus |
 | Viagens | Cadastro/consulta em memória integrados | Rotas, paradas, viagens, preço por tipo de ônibus e promoções |
-| Passagens | Planejado | Venda por trecho, ocupação e pagamento por cartão ou em dinheiro |
+| Passagens | Reservas, ocupação e pagamentos integrados | Venda por trecho, ocupação e pagamento por cartão ou em dinheiro |
 | Motoristas | Cadastro, histórico e escala implementados | Limites de 6 horas e 400 km, descanso de 12 horas e trocas em paradas autorizadas |
 | Shared | Implementado | Exceções de domínio, tratamento de erros e configuração do OpenAPI |
 
@@ -99,3 +99,9 @@ A entidade JPA (`OnibusEntity`) pertence à infraestrutura e é distinta do agre
 Todas as respostas de erro seguem o mesmo formato, com `codigo`, `mensagem` e `detalhes`. As exceções de domínio são traduzidas para os status HTTP 404 (recurso não encontrado), 409 (regra de negócio violada) e 422 (dado inválido). O JSON da API usa nomes de campo em `snake_case`.
 
 A documentação das rotas é gerada com springdoc e fica disponível no Swagger, em `/docs`. Os detalhes de cada rota estão em `CONTRATOS_API.md`, e as decisões e premissas assumidas estão em `DECISOES.md`.
+
+## Venda integrada
+
+`ViagensParaVendaAdapter` liga a venda à viagem e rota oficiais e ao ônibus selecionado pela escala, cuja capacidade vem de Frota. `PrecoFinalViagemService` centraliza a composição do preço oficial para a consulta REST e a compra. A V3 original de Passagens convive com V1, V2 e V4.
+
+A transação de compra usa `READ_COMMITTED` e bloqueia a linha persistida da escala até o commit, antes de consultar a ocupação por segmento e gravar a reserva. O adaptador exige uma transação externa; um monitor Java não substitui esse bloqueio. Sem escala não há capacidade oficial para venda (409); sem cadastro de locais em Viagens, guichê permanece indisponível (409), com venda pela internet habilitada. Viagens permanece em memória; sua persistência definitiva e a autorização oficial de trocas continuam pendentes.

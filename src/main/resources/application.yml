@@ -24,3 +24,7 @@ springdoc:
     operations-sorter: method
     tags-sorter: alpha
   override-with-generic-response: false
+
+calango:
+  passagens:
+    reserva-minutos: ${RESERVA_MINUTOS:15}
