@@ -17,9 +17,9 @@ A escolha por um monólito modular, e não por microsserviços, atende ao tamanh
 | Módulo | Situação | Responsabilidade no minimundo |
 |---|---|---|
 | Frota | Implementado | Ônibus de 23, 28 ou 32 lugares (leito, semi-leito e executivo), controle de quilometragem, revisão a cada 10.000 km e alocação ideal de ônibus |
-| Viagens | Planejado | Rotas, paradas, viagens, preço por tipo de ônibus e promoções |
+| Viagens | Cadastro/consulta em memória integrados | Rotas, paradas, viagens, preço por tipo de ônibus e promoções |
 | Passagens | Planejado | Venda por trecho, ocupação e pagamento por cartão ou em dinheiro |
-| Motoristas | Planejado | Limites de 6 horas e 400 km, descanso de 12 horas e trocas em paradas autorizadas |
+| Motoristas | Cadastro, histórico e escala implementados | Limites de 6 horas e 400 km, descanso de 12 horas e trocas em paradas autorizadas |
 | Shared | Implementado | Exceções de domínio, tratamento de erros e configuração do OpenAPI |
 
 ## Estrutura de pacotes
@@ -81,8 +81,12 @@ A combinação de ônibus para uma quantidade de passageiros é calculada pelo s
 A escolha do condutor de cada trecho da viagem e a definição das paradas de troca são realizadas pelo serviço de domínio `PlanejadorEscala`, implementado em Java puro em `modules/motoristas/domain`.
 
 - **Limites contínuos e descanso:** cada condutor pode dirigir no máximo **6 horas** e **400 km** contínuos entre trocas; paradas comuns não zeram os acumuladores. Para assumir um novo bloco de direção, o condutor deve ter pelo menos **12 horas** de descanso desde o fim da última direção e não pode possuir alocações conflitantes.
-- **Primeira jornada sem histórico:** condutores sem períodos dirigidos anteriores (`CandidatoCondutor.semHistorico`) são considerados descansados e aptos para a primeira jornada.
+- **Primeira jornada sem histórico:** `CandidatoCondutor.semHistorico` só representa condutores sem períodos dirigidos **e sem alocações existentes**. Sem direção anterior, mas com reserva, o adaptador preserva a lista de alocações no construtor de `CandidatoCondutor`.
 - **Antecipação na última parada viável:** o algoritmo avalia o percurso à frente e antecipa a substituição para a última parada com troca autorizada sempre que seguir até uma parada comum seguinte ultrapassaria 6 horas ou 400 km. Caso não exista escala completa viável, lança `RegraDeNegocioViolada` sem retornar escala parcial.
+
+A integração usa `EscalaService` para coordenar `ViagensParaEscala`, o cadastro da Frota, `EscalaRepository` e o bean do `PlanejadorEscala` original. O adaptador de Viagens usa o recorte de `origin/feature/viagens` descrito em `CONTRATOS_API.md`; não há segundo modelo persistido de viagem.
+
+O repositório de escala usa JDBC sobre o mesmo DataSource gerenciado pela transação Spring/JPA. `READ_COMMITTED`, bloqueio pessimista das linhas de todos os candidatos em ordem de UUID e leitura de reservas após adquirir os bloqueios impedem alocações incompatíveis simultâneas, inclusive quando o histórico de direção está vazio. Cabeçalho e todos os trechos são gravados juntos; trocas são derivadas pelo resultado do domínio. A V4 reserva o esquema de escala sem colidir com a V3 de Passagens. O histórico efetivamente dirigido tem armazenamento próprio; reservas vêm dos trechos das escalas.
 
 ## Persistência
 
