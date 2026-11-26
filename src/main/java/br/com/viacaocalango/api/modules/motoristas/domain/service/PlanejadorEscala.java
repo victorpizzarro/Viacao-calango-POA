@@ -275,16 +275,12 @@ public class PlanejadorEscala {
             Duration tempoAcumulado,
             int kmAcumulado,
             List<List<IntervaloHorario>> blocosNaViagem) {
-        List<List<IntervaloHorario>> copiaBlocos = new ArrayList<>(blocosNaViagem.size());
-        for (List<IntervaloHorario> blocos : blocosNaViagem) {
-            copiaBlocos.add(List.copyOf(blocos));
-        }
         return new ChaveEstado(
                 indiceTrecho,
                 indiceCandidatoAtual,
                 tempoAcumulado.toSeconds(),
                 kmAcumulado,
-                List.copyOf(copiaBlocos));
+                blocosNaViagem.stream().map(List::copyOf).toList());
     }
 
     private record ChaveEstado(

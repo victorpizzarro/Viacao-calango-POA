@@ -9,8 +9,4 @@ public record MinutosDesdeOrigem(int valor) {
             throw new DadoInvalido("Minutos desde origem nao pode ser negativo");
         }
     }
-
-    public int diferenca(MinutosDesdeOrigem outro) {
-        return Math.abs(this.valor - outro.valor);
-    }
 }

@@ -52,12 +52,4 @@ public class Rota {
     public List<Parada> getParadas() {
         return List.copyOf(paradas);
     }
-
-    public Parada getOrigem() {
-        return paradas.get(0);
-    }
-
-    public Parada getDestino() {
-        return paradas.get(paradas.size() - 1);
-    }
 }

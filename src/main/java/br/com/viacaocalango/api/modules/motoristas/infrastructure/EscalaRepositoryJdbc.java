@@ -20,9 +20,7 @@ class EscalaRepositoryJdbc implements EscalaRepository {
 
     @Override
     public List<UUID> bloquearCandidatos() {
-        var ids = jdbc.queryForList("SELECT id FROM motoristas ORDER BY id", UUID.class);
-        ids.forEach(this::bloquearMotorista);
-        return ids;
+        return jdbc.queryForList("SELECT id FROM motoristas ORDER BY id FOR UPDATE", UUID.class);
     }
 
     @Override

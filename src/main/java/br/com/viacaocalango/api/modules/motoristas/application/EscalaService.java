@@ -35,7 +35,6 @@ public class EscalaService {
         if (!onibus.buscar(onibusId).disponivelParaOperacao()) {
             throw new RegraDeNegocioViolada("Onibus indisponivel para operacao");
         }
-        // Bloqueia inclusive candidatos sem historico. A mesma ordem evita deadlocks.
         var ids = repository.bloquearCandidatos();
         if (repository.buscar(viagemId).isPresent()) {
             throw new RegraDeNegocioViolada("Viagem ja possui escala");
@@ -57,7 +56,6 @@ public class EscalaService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public IntervaloHorario registrarPeriodo(UUID motoristaId, IntervaloHorario periodo) {
-        // Escrita do historico participa do mesmo protocolo de bloqueio do planejamento.
         repository.bloquearMotorista(motoristaId);
         repository.registrarPeriodo(motoristaId, periodo);
         return periodo;

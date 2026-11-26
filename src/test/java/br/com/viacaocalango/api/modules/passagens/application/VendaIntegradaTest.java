@@ -106,7 +106,7 @@ class VendaIntegradaTest {
                         "GET",
                         "viagens/"
                                 + viagem
-                                + "/preco?origem=Rio&destino=Juiz%20de%20Fora&data_compra=2026-11-26T12:00:00Z",
+                                + "/preco?origem=rio&destino=JUIZ%20DE%20FORA&data_compra=2026-11-26T12:00:00Z",
                         null);
         assertThat(preco.statusCode()).isEqualTo(200);
         int cotado = JsonPath.read(preco.body(), "$.preco_centavos");
@@ -137,6 +137,8 @@ class VendaIntegradaTest {
         assertThat(reservaCompleta.<Integer>read("$.preco_centavos"))
                 .isEqualTo(JsonPath.<Integer>read(completo.body(), "$.preco_centavos"))
                 .isEqualTo(21675);
+        assertThat(disponibilidade().<List<Integer>>read("$.trechos[*].lugares_ocupados"))
+                .containsExactly(2, 2);
     }
 
     @Test

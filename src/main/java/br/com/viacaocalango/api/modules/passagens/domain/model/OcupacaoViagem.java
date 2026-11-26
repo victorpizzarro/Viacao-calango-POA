@@ -7,19 +7,26 @@ import br.com.viacaocalango.api.shared.domain.DadoInvalido;
 import br.com.viacaocalango.api.shared.domain.RegraDeNegocioViolada;
 import java.time.OffsetDateTime;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 public class OcupacaoViagem {
 
     private final int capacidade;
     private final List<ParadaId> paradas;
+    private final Map<ParadaId, Integer> indices;
     private final int[] ocupados;
 
-    private OcupacaoViagem(int capacidade, List<ParadaId> paradas, int[] ocupados) {
+    private OcupacaoViagem(
+            int capacidade,
+            List<ParadaId> paradas,
+            Map<ParadaId, Integer> indices,
+            int[] ocupados) {
         this.capacidade = capacidade;
         this.paradas = paradas;
+        this.indices = indices;
         this.ocupados = ocupados;
     }
 
@@ -32,24 +39,36 @@ public class OcupacaoViagem {
             throw new DadoInvalido("Capacidade da viagem invalida");
         }
         List<ParadaId> paradas = List.copyOf(paradasEmOrdem);
-        if (paradas.size() < 2 || new HashSet<>(paradas).size() != paradas.size()) {
+        if (paradas.size() < 2) {
             throw new DadoInvalido("Paradas da viagem inconsistentes");
         }
-        int[] ocupados = new int[paradas.size() - 1];
-        for (Passagem passagem : passagens) {
-            if (passagem.ocupaLugar(agora)) {
-                int[] intervalo = intervaloDe(paradas, passagem.trecho());
-                for (int posicao = intervalo[0]; posicao < intervalo[1]; posicao++) {
-                    ocupados[posicao]++;
-                }
+        Map<ParadaId, Integer> indices = new HashMap<>();
+        for (int i = 0; i < paradas.size(); i++) {
+            if (indices.putIfAbsent(paradas.get(i), i) != null) {
+                throw new DadoInvalido("Paradas da viagem inconsistentes");
             }
         }
-        return new OcupacaoViagem(capacidade, paradas, ocupados);
+        // Embarque soma uma vaga ocupada, desembarque a devolve no segmento seguinte.
+        int[] variacao = new int[paradas.size()];
+        for (Passagem passagem : passagens) {
+            if (passagem.ocupaLugar(agora)) {
+                var intervalo = intervaloDe(indices, passagem.trecho());
+                variacao[intervalo.origem()]++;
+                variacao[intervalo.destino()]--;
+            }
+        }
+        int[] ocupados = new int[paradas.size() - 1];
+        int total = 0;
+        for (int i = 0; i < ocupados.length; i++) {
+            total += variacao[i];
+            ocupados[i] = total;
+        }
+        return new OcupacaoViagem(capacidade, paradas, indices, ocupados);
     }
 
     public void garantirLugar(Trecho trecho) {
-        int[] intervalo = intervaloDe(paradas, trecho);
-        for (int posicao = intervalo[0]; posicao < intervalo[1]; posicao++) {
+        var intervalo = intervaloDe(indices, trecho);
+        for (int posicao = intervalo.origem(); posicao < intervalo.destino(); posicao++) {
             if (ocupados[posicao] >= capacidade) {
                 throw new RegraDeNegocioViolada("Nao ha lugar disponivel no trecho escolhido");
             }
@@ -68,15 +87,17 @@ public class OcupacaoViagem {
                 Math.max(0, capacidade - ocupados[posicao]));
     }
 
-    private static int[] intervaloDe(List<ParadaId> paradas, Trecho trecho) {
-        int origem = paradas.indexOf(trecho.origem());
-        int destino = paradas.indexOf(trecho.destino());
-        if (origem < 0 || destino < 0) {
+    private static Intervalo intervaloDe(Map<ParadaId, Integer> indices, Trecho trecho) {
+        Integer origem = indices.get(trecho.origem());
+        Integer destino = indices.get(trecho.destino());
+        if (origem == null || destino == null) {
             throw new DadoInvalido("Parada nao pertence a viagem");
         }
         if (origem >= destino) {
             throw new DadoInvalido("Destino deve vir depois da origem no percurso");
         }
-        return new int[] {origem, destino};
+        return new Intervalo(origem, destino);
     }
+
+    private record Intervalo(int origem, int destino) {}
 }

@@ -110,7 +110,7 @@ Retorna 201 com o motorista persistido:
 
 Foi reutilizado somente o recorte necessário de `origin/feature/viagens` (`ca28350`, autor Thiago Farias): entidades `Viagem`, `Rota` e `Parada`, identificadores, km/minutos acumulados, repositórios, serviços de cadastro e DTOs. Na conciliação com a branch oficial, foram incorporados os beans de precificação e cálculo de trecho e a rota de consulta de preço, preservando a consulta de viagem por UUID e o Swagger. Os repositórios foram substituídos por adaptadores JPA na V5, preservando as interfaces. Viagens mantém a ordem de inserção por uma sequência persistida; Rotas continua sem promessa de ordem de listagem.
 
-`Viagem` tem UUID, rota, `data_hora_partida` e status `AGENDADA`. Cada parada tem seu UUID, nome, ordem, `km_desde_origem` e `minutos_desde_origem`. Trechos são os pares consecutivos de paradas ordenadas, seguindo a representação de `TrechoRota`: distância por diferença de km acumulados e horários por partida da viagem mais minutos acumulados. O adaptador exige km crescentes, diferenças inteiras e horários crescentes, sem arredondar distâncias para o planejador.
+`Viagem` tem UUID, rota, `data_hora_partida` e status `AGENDADA`. Cada parada tem seu UUID, nome, ordem, `km_desde_origem` e `minutos_desde_origem`. Trechos são os pares consecutivos de paradas ordenadas. A distância é a diferença entre os km acumulados, e os horários somam os minutos acumulados à partida da viagem. O adaptador exige km crescentes, diferenças inteiras e horários crescentes, sem arredondar distâncias para o planejador.
 
 Rotas, paradas e viagens agora são persistidas nas tabelas `rota`, `parada` e `viagem`, criadas pela V5. Os UUIDs retornados no cadastro permanecem válidos após reiniciar a API. A viagem referencia sua rota, e as paradas são carregadas por `ordem`. O ônibus continua vindo da escala e as autorizações de troca continuam informadas ao alocar; esta etapa não cria cadastro de autorização nem de guichês.
 
@@ -207,9 +207,9 @@ Há um único adaptador Spring de `ViagensParaVenda`: `ViagensParaVendaAdapter`.
 |---|---|
 | UUID, partida, status | `ViagemService` oficial; somente viagem `AGENDADA` é vendável |
 | UUIDs, nomes e ordem das paradas | `viagem.rota().getParadas()` oficial, ordenado pela rota |
-| Ônibus selecionado | `motorista_escala`, consultado por `EscalaService` |
-| Capacidade | `OnibusService.buscar(escala.onibusId()).capacidade().lugares()`; nenhum valor padrão |
-| Preço final em centavos | `PrecoFinalViagemService`, extração do cálculo já usado na consulta de preço; delega distância e preço base a `TrechoRotaService` e `PrecoViagemService`, preservando tarifa, descontos e arredondamento oficiais |
+| Ônibus selecionado | Coluna `onibus_id` da escala persistida em `motorista_escala` |
+| Capacidade | `OnibusService.buscar(onibusId).capacidade().lugares()`; nenhum valor padrão |
+| Preço final em centavos | `PrecoFinalViagemService`, compartilhado pela consulta e pela venda, calcula a distância pelas paradas da rota e aplica a tarifa, os descontos e o arredondamento oficiais |
 | Momento da compra | `Clock` compartilhado; consulta de preço aceita `data_compra` para cotar nas mesmas condições |
 | Locais de venda | Não há cadastro oficial em Viagens; lista vazia, sem inferir guichês a partir dos nomes de paradas |
 

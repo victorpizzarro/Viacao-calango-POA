@@ -28,16 +28,4 @@ public class RotaService {
     public List<Rota> buscarTodas() {
         return rotaRepository.buscarTodas();
     }
-
-    public void excluirRota(RotaId id) {
-        rotaRepository.excluir(id);
-    }
-
-    public Parada buscarParada(Rota rota, String nomeParada) {
-        return rota.getParadas().stream()
-                .filter(parada -> parada.getNome().equalsIgnoreCase(nomeParada))
-                .findFirst()
-                .orElseThrow(
-                        () -> new IllegalArgumentException("Parada nao encontrada: " + nomeParada));
-    }
 }
