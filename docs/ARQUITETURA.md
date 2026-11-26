@@ -76,6 +76,14 @@ O odômetro total nunca é reiniciado: a revisão apenas atualiza a referência 
 
 A combinação de ônibus para uma quantidade de passageiros é calculada pelo serviço de domínio `CalculadoraAlocacaoIdeal`. O critério é minimizar os lugares vazios e, em caso de empate, o número de ônibus. O cálculo usa programação dinâmica sobre as capacidades permitidas, de forma semelhante ao problema clássico do troco.
 
+## Escala de motoristas
+
+A escolha do condutor de cada trecho da viagem e a definição das paradas de troca são realizadas pelo serviço de domínio `PlanejadorEscala`, implementado em Java puro em `modules/motoristas/domain`.
+
+- **Limites contínuos e descanso:** cada condutor pode dirigir no máximo **6 horas** e **400 km** contínuos entre trocas; paradas comuns não zeram os acumuladores. Para assumir um novo bloco de direção, o condutor deve ter pelo menos **12 horas** de descanso desde o fim da última direção e não pode possuir alocações conflitantes.
+- **Primeira jornada sem histórico:** condutores sem períodos dirigidos anteriores (`CandidatoCondutor.semHistorico`) são considerados descansados e aptos para a primeira jornada.
+- **Antecipação na última parada viável:** o algoritmo avalia o percurso à frente e antecipa a substituição para a última parada com troca autorizada sempre que seguir até uma parada comum seguinte ultrapassaria 6 horas ou 400 km. Caso não exista escala completa viável, lança `RegraDeNegocioViolada` sem retornar escala parcial.
+
 ## Persistência
 
 O banco de dados em desenvolvimento é o H2, gravado em arquivo, com opção de PostgreSQL por meio das variáveis de ambiente. O esquema é criado por migrações Flyway, e o Hibernate apenas valida se as entidades correspondem às tabelas.
