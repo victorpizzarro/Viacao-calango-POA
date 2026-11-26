@@ -108,11 +108,11 @@ Retorna 201 com o motorista persistido:
 
 ### Origem do percurso de Viagens
 
-Foi reutilizado somente o recorte necessário de `origin/feature/viagens` (`ca28350`, autor Thiago Farias): entidades `Viagem`, `Rota` e `Parada`, identificadores, km/minutos acumulados, repositórios, serviços de cadastro e DTOs. Na conciliação com a branch oficial, foram incorporados os beans de precificação e cálculo de trecho e a rota de consulta de preço, preservando a consulta de viagem por UUID e o Swagger. Os repositórios usam métodos sincronizados para proteger leitura, escrita e cópia das listagens; Viagens mantém LinkedHashMap e sua ordem de inserção, e Rotas mantém HashMap sem promessa de ordem.
+Foi reutilizado somente o recorte necessário de `origin/feature/viagens` (`ca28350`, autor Thiago Farias): entidades `Viagem`, `Rota` e `Parada`, identificadores, km/minutos acumulados, repositórios, serviços de cadastro e DTOs. Na conciliação com a branch oficial, foram incorporados os beans de precificação e cálculo de trecho e a rota de consulta de preço, preservando a consulta de viagem por UUID e o Swagger. Os repositórios foram substituídos por adaptadores JPA na V5, preservando as interfaces. Viagens mantém a ordem de inserção por uma sequência persistida; Rotas continua sem promessa de ordem de listagem.
 
 `Viagem` tem UUID, rota, `data_hora_partida` e status `AGENDADA`. Cada parada tem seu UUID, nome, ordem, `km_desde_origem` e `minutos_desde_origem`. Trechos são os pares consecutivos de paradas ordenadas, seguindo a representação de `TrechoRota`: distância por diferença de km acumulados e horários por partida da viagem mais minutos acumulados. O adaptador exige km crescentes, diferenças inteiras e horários crescentes, sem arredondar distâncias para o planejador.
 
-A branch publicada ainda **armazena rotas e viagens em memória**, sem migração ou vínculo com ônibus e sem autorização de troca nas paradas. O ônibus cadastrado em Frota e as autorizações por UUID de parada são informados ao alocar; a escala persiste a associação e o percurso utilizado. Não foi criada outra tabela de viagens, rotas ou paradas. Após reiniciar a aplicação, as escalas continuam consultáveis por UUID no banco, mas os cadastros de Viagens precisam ser recriados para novos planejamentos.
+Rotas, paradas e viagens agora são persistidas nas tabelas `rota`, `parada` e `viagem`, criadas pela V5. Os UUIDs retornados no cadastro permanecem válidos após reiniciar a API. A viagem referencia sua rota, e as paradas são carregadas por `ordem`. O ônibus continua vindo da escala e as autorizações de troca continuam informadas ao alocar; esta etapa não cria cadastro de autorização nem de guichês.
 
 ### Escala
 
@@ -131,7 +131,7 @@ O servidor usa todos os motoristas cadastrados e lê `motorista_periodo_dirigido
 
 `EscalaService` monta `SolicitacaoEscala` e chama o método real `PlanejadorEscala.planejar`. As regras de 6h/400 km, descanso mínimo de 12h e trocas permanecem no domínio do Pablo, sem duplicação na aplicação. O retorno 201 contém `viagem_id`, `onibus_id`, `trechos` e `trocas` do resultado. Cada trecho inclui `ordem`, `origem`, `destino`, `partida`, `chegada`, `distancia_km`, `motorista_id`; cada troca inclui `parada`, `horario`, `motorista_anterior_id`, `novo_motorista_id`. Horários podem ser normalizados para UTC; `15:00Z` equivale a `12:00-03:00`.
 
-**`GET /api/v1/viagens/{id}/escala`** retorna 200 com a escala persistida. As trocas são reconstruídas dos trechos pelo próprio `EscalaViagem.aPartirDeTrechos`. Não depende do cadastro em memória para recuperar uma escala existente.
+**`GET /api/v1/viagens/{id}/escala`** retorna 200 com a escala persistida. As trocas são reconstruídas dos trechos pelo próprio `EscalaViagem.aPartirDeTrechos`. Recupera o snapshot dos trechos persistidos, inclusive no caso de referências legadas a viagens anteriores à V5.
 
 - 404: viagem ou ônibus inexistentes no POST; escala inexistente no GET.
 - 409 `REGRA_DE_NEGOCIO`: nenhuma escala completa viável ou viagem já escalada. Não há gravação parcial.
@@ -142,7 +142,7 @@ O servidor usa todos os motoristas cadastrados e lê `motorista_periodo_dirigido
 
 Uma transação `READ_COMMITTED` cobre bloqueios, leitura do histórico/reservas, planejamento e todos os inserts. Todas as linhas dos candidatos são bloqueadas por `SELECT ... FOR UPDATE` em ordem de UUID, inclusive motoristas sem histórico. **Depois dos bloqueios**, o servidor lê novamente as alocações e os períodos; uma solicitação que esperou enxerga as reservas confirmadas pela anterior. A gravação do histórico também participa desse protocolo. O bloqueio no banco funciona entre instâncias da aplicação; não depende de um mutex Java. Bloquear todos os candidatos prioriza consistência e serializa os planejamentos neste recorte local.
 
-A migração **`V4__escalas_motoristas.sql`** cria `motorista_periodo_dirigido`, `motorista_escala` e `motorista_escala_trecho`, com FKs para cadastro/Frota, índices e uma escala por UUID de viagem. Todas as branches publicadas foram inspecionadas após `fetch`: V1 é Frota, V2 é cadastro, V3 está em `origin/feat/passagens` (`e347583`); V4 estava livre. A integração de Passagens incorpora agora a V3 original, mantendo V1, V2 e V4 sem alteração. `viagem_id` é referência lógica ao UUID de Viagens, pois a branch de origem não publica tabela de viagens.
+A migração **`V4__escalas_motoristas.sql`** cria `motorista_periodo_dirigido`, `motorista_escala` e `motorista_escala_trecho`, com FKs para cadastro/Frota, índices e uma escala por UUID de viagem. Todas as branches publicadas foram inspecionadas após `fetch`: V1 é Frota, V2 é cadastro, V3 está em `origin/feat/passagens` (`e347583`); V4 estava livre. A integração de Passagens incorpora agora a V3 original, mantendo V1, V2 e V4 sem alteração. `viagem_id` em escalas e passagens permanece referência lógica: a V5 cria o cadastro persistido sem impor FKs retroativas sobre dados anteriores (ver tratamento do legado abaixo).
 
 #### Roteiro para o Swagger (`/docs`)
 
@@ -180,7 +180,7 @@ A migração **`V4__escalas_motoristas.sql`** cria `motorista_periodo_dirigido`,
 
 `GET /api/v1/viagens/{id}/preco?origem=Rio&destino=Juiz%20de%20Fora&data_compra=2026-11-25T08:00:00-03:00` usa os nomes das paradas da rota oficial e a data de compra opcional (padrão: agora). Mantém o cálculo oficial: tarifa de 0,50 por km, desconto de 10% no percurso completo e mais 5% com antecedência mínima de sete dias. Retorna `distancia_km`, `preco_centavos`, `preco_reais`, `percurso_completo` e `desconto_antecedencia`, conforme `PrecoResponse`.
 
-Permanecem pendentes a persistência definitiva de Viagens e a consulta no backend da autorização de troca por parada. A conciliação dos arquivos não resolve essas pendências.
+A V5 acrescenta a persistência de Viagens. Continuam pendentes a consulta no backend da autorização de troca por parada e a fonte oficial dos locais de venda em guichê.
 
 ### Passagens
 
@@ -215,7 +215,7 @@ Há um único adaptador Spring de `ViagensParaVenda`: `ViagensParaVendaAdapter`.
 
 Viagem inexistente retorna 404. Viagem existente sem escala retorna 409 `REGRA_DE_NEGOCIO` por capacidade indisponível, na compra e na disponibilidade. Venda por `INTERNET` funciona sem `local_venda`. Enquanto não houver fonte oficial de locais de venda, a compra por `GUICHE` retorna 409 `REGRA_DE_NEGOCIO` com mensagem de locais não cadastrados. Não foi criado cadastro paralelo.
 
-A compra usa uma transação `READ_COMMITTED`. `obterComBloqueio` exige transação externa (`MANDATORY`) e executa `SELECT ... FOR UPDATE` sobre a linha da escala da viagem. O bloqueio é mantido pelo mesmo DataSource/transação JPA até confirmar ou desfazer a gravação da passagem, cobrindo a leitura da ocupação. Não depende do monitor dos mapas em memória. Uma compra que esperou consulta as reservas já confirmadas antes de verificar a última vaga. Reservas vencidas não consomem capacidade; o pagamento aprovado mantém a ocupação e confirma a passagem. Essa solução usa a escala persistida existente sem criar uma tabela de viagens.
+A compra usa uma transação `READ_COMMITTED`. `obterComBloqueio` exige transação externa (`MANDATORY`) e executa `SELECT ... FOR UPDATE` sobre a linha da escala da viagem. O bloqueio é mantido pelo mesmo DataSource/transação JPA até confirmar ou desfazer a gravação da passagem, cobrindo a leitura da ocupação. O bloqueio transacional continua sendo usado com os repositórios JPA de Viagens. Uma compra que esperou consulta as reservas já confirmadas antes de verificar a última vaga. Reservas vencidas não consomem capacidade; o pagamento aprovado mantém a ocupação e confirma a passagem. Essa proteção continua usando a linha da escala persistida, agora com a viagem também cadastrada no banco pela V5.
 
 Exemplo de fluxo no Swagger (substitua os UUIDs pelos retornados): cadastre a rota Rio–Juiz de Fora–BH do roteiro anterior, viagem futura, ônibus, dois motoristas e escala. Consulte `/api/v1/viagens/{id}/preco?origem=Rio&destino=Juiz%20de%20Fora` e reserve:
 
@@ -243,4 +243,31 @@ O gateway é o simulado da branch de Passagens. Compare `valor_centavos` do paga
 
 `VendaIntegradaTest` usa HTTP, Flyway, JPA, planejador e Frota reais: ônibus selecionado de 23 lugares entre veículos de capacidades diferentes; preço parcial e completo com descontos, pagamento aprovado, ocupação por segmento, viagem inexistente (404), trecho invertido/estranho (422), ausência de escala/guichês (409), exigência de transação externa e duas transações bloqueadas disputando a última vaga (um 201, um 409, exatamente 23 reservas persistidas). Os 38 testes anteriores permanecem na execução.
 
-Continuam pendentes a persistência definitiva de Viagens e a autorização oficial de troca por parada no backend. Depois de um reinício, as viagens em memória precisam de tratamento na etapa de persistência: esta entrega não recria nem inventa UUIDs para viagens anteriores.
+Continuam pendentes a autorização oficial de troca por parada no backend e a venda em guichê. A persistência da V5 conserva as viagens criadas a partir desta versão, sem fabricar viagens para referências legadas.
+
+### Persistência de Viagens — V5
+
+`V5__viagens.sql` cria `rota`, `parada` e `viagem`, com tipos compatíveis com H2 e PostgreSQL. Os UUIDs vêm dos mesmos métodos de criação do domínio; não são regenerados ao gravar ou reconstituir. A relação viagem–rota e a relação parada–rota têm FKs; `UNIQUE (rota_id, ordem)` preserva a identidade de cada posição. As entidades JPA são separadas das entidades do domínio.
+
+`RotaRepository` e `ViagemRepository` mantêm suas interfaces. Cada adaptador faz gravação ou leitura/conversão do agregado dentro da transação, sem depender de sessão Hibernate aberta no controller. Paradas são reconstituídas em ordem crescente. A listagem de viagens usa `sequencia`, uma coluna identity gerada pelo banco somente na inserção, preservando a ordem de cadastro mesmo após reiniciar ou salvar novamente um UUID existente. A listagem de rotas continua sem ordem garantida. Exclusão de rota referenciada por viagem é impedida pela FK; não há endpoint novo de exclusão.
+
+#### Referências legadas
+
+V1–V4 permanecem intactas. Antes da V5, escalas, passagens e pagamentos podiam sobreviver ao desaparecimento das viagens em memória. A V5 **não apaga nem altera esses registros**, não infere nomes, horários ou paradas e não cria viagens fictícias. Não adiciona FKs de `motorista_escala.viagem_id`, `passagem.viagem_id` ou dos IDs de paradas da passagem para as tabelas novas. Novas operações validam os UUIDs contra os repositórios reais na aplicação. Uma referência legada sem cadastro continua sem viagem correspondente: consulta da viagem/disponibilidade e nova compra retornam 404, enquanto o snapshot da escala e os dados de passagem/pagamento permanecem no banco. Não há importação automática de objetos que existiam somente na memória do processo antigo.
+
+Para auditar referências sem cadastro, sem modificar dados:
+
+```sql
+SELECT e.viagem_id FROM motorista_escala e
+LEFT JOIN viagem v ON v.id = e.viagem_id WHERE v.id IS NULL;
+SELECT p.id, p.viagem_id FROM passagem p
+LEFT JOIN viagem v ON v.id = p.viagem_id WHERE v.id IS NULL;
+```
+
+A reconciliação de registros históricos exige uma fonte original confiável; fica fora desta migração. Cadastros novos, incluindo seus UUIDs e a ordem das paradas, passam a sobreviver ao reinício. A migração foi testada também a partir de um banco em V4 com escala, passagem confirmada e pagamento legados, sem perder os registros e mantendo vazias as tabelas novas.
+
+#### Validação da persistência
+
+`ViagensPersistenciaTest` verifica reconstituição em transações distintas, UUIDs e dados de paradas, ordem das paradas, regravação sem duplicação e ordem de inserção das viagens. `MigracaoViagensTest` verifica o upgrade V4–V5 com referências legadas.
+
+Também foi validado o reinício completo com dois processos consecutivos da API e o mesmo H2 temporário em arquivo: cadastro pelas rotas reais, escala, passagem paga e UUIDs guardados; após reiniciar, rota, viagem, escala e disponibilidade retornaram 200 com os mesmos dados. A ordem Rio–Juiz de Fora–BH e a ordem de cadastro das viagens foram preservadas. A ocupação permaneceu em um lugar no primeiro segmento e zero no seguinte. A nova tentativa de pagar a mesma passagem retornou 409 (`Passagem ja esta paga`); consulta SQL confirmou o mesmo UUID de pagamento aprovado, passagem confirmada e valor de 11.875 centavos. Não foi criado endpoint adicional de consulta de pagamento.

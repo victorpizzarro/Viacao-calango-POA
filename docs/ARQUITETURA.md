@@ -17,7 +17,7 @@ A escolha por um monólito modular, e não por microsserviços, atende ao tamanh
 | Módulo | Situação | Responsabilidade no minimundo |
 |---|---|---|
 | Frota | Implementado | Ônibus de 23, 28 ou 32 lugares (leito, semi-leito e executivo), controle de quilometragem, revisão a cada 10.000 km e alocação ideal de ônibus |
-| Viagens | Cadastro/consulta em memória integrados | Rotas, paradas, viagens, preço por tipo de ônibus e promoções |
+| Viagens | Rotas, paradas e viagens persistidas | Rotas, paradas, viagens, preço por tipo de ônibus e promoções |
 | Passagens | Reservas, ocupação e pagamentos integrados | Venda por trecho, ocupação e pagamento por cartão ou em dinheiro |
 | Motoristas | Cadastro, histórico e escala implementados | Limites de 6 horas e 400 km, descanso de 12 horas e trocas em paradas autorizadas |
 | Shared | Implementado | Exceções de domínio, tratamento de erros e configuração do OpenAPI |
@@ -84,7 +84,7 @@ A escolha do condutor de cada trecho da viagem e a definição das paradas de tr
 - **Primeira jornada sem histórico:** `CandidatoCondutor.semHistorico` só representa condutores sem períodos dirigidos **e sem alocações existentes**. Sem direção anterior, mas com reserva, o adaptador preserva a lista de alocações no construtor de `CandidatoCondutor`.
 - **Antecipação na última parada viável:** o algoritmo avalia o percurso à frente e antecipa a substituição para a última parada com troca autorizada sempre que seguir até uma parada comum seguinte ultrapassaria 6 horas ou 400 km. Caso não exista escala completa viável, lança `RegraDeNegocioViolada` sem retornar escala parcial.
 
-A integração usa `EscalaService` para coordenar `ViagensParaEscala`, o cadastro da Frota, `EscalaRepository` e o bean do `PlanejadorEscala` original. O adaptador de Viagens usa o recorte de `origin/feature/viagens` descrito em `CONTRATOS_API.md`; não há segundo modelo persistido de viagem.
+A integração usa `EscalaService` para coordenar `ViagensParaEscala`, o cadastro da Frota, `EscalaRepository` e o bean do `PlanejadorEscala` original. O adaptador de Viagens usa o recorte de `origin/feature/viagens` descrito em `CONTRATOS_API.md`; a V5 persiste esse modelo nas tabelas canônicas de Viagens, sem criar cadastro paralelo.
 
 O repositório de escala usa JDBC sobre o mesmo DataSource gerenciado pela transação Spring/JPA. `READ_COMMITTED`, bloqueio pessimista das linhas de todos os candidatos em ordem de UUID e leitura de reservas após adquirir os bloqueios impedem alocações incompatíveis simultâneas, inclusive quando o histórico de direção está vazio. Cabeçalho e todos os trechos são gravados juntos; trocas são derivadas pelo resultado do domínio. A V4 reserva o esquema de escala sem colidir com a V3 de Passagens. O histórico efetivamente dirigido tem armazenamento próprio; reservas vêm dos trechos das escalas.
 
@@ -104,4 +104,10 @@ A documentação das rotas é gerada com springdoc e fica disponível no Swagger
 
 `ViagensParaVendaAdapter` liga a venda à viagem e rota oficiais e ao ônibus selecionado pela escala, cuja capacidade vem de Frota. `PrecoFinalViagemService` centraliza a composição do preço oficial para a consulta REST e a compra. A V3 original de Passagens convive com V1, V2 e V4.
 
-A transação de compra usa `READ_COMMITTED` e bloqueia a linha persistida da escala até o commit, antes de consultar a ocupação por segmento e gravar a reserva. O adaptador exige uma transação externa; um monitor Java não substitui esse bloqueio. Sem escala não há capacidade oficial para venda (409); sem cadastro de locais em Viagens, guichê permanece indisponível (409), com venda pela internet habilitada. Viagens permanece em memória; sua persistência definitiva e a autorização oficial de trocas continuam pendentes.
+A transação de compra usa `READ_COMMITTED` e bloqueia a linha persistida da escala até o commit, antes de consultar a ocupação por segmento e gravar a reserva. O adaptador exige uma transação externa; um monitor Java não substitui esse bloqueio. Sem escala não há capacidade oficial para venda (409); sem cadastro de locais em Viagens, guichê permanece indisponível (409), com venda pela internet habilitada. Viagens passa a usar JPA na V5. A autorização oficial de trocas e a venda em guichê continuam pendentes.
+
+## Persistência de rotas e viagens
+
+`RotaRepositoryImpl` e `ViagemRepositoryImpl` implementam as mesmas portas usando Spring Data JPA, com entidades de infraestrutura e conversão para o domínio dentro de transações. A V5 cria `rota`, `parada` e `viagem`. Os UUIDs são preservados, a coleção de paradas é ordenada por `ordem` e uma identity `sequencia` conserva a ordem de inserção das viagens, inclusive após atualizações e reinícios. Há uma única implementação Spring para cada porta.
+
+As referências antigas de Escalas e Passagens permanecem lógicas para não invalidar registros criados quando Viagens era volátil. A V5 não inventa viagens para referências órfãs, nem apaga escala, passagem ou pagamento; impõe integridade referencial somente dentro das tabelas novas. O tratamento e as consultas de auditoria estão em `CONTRATOS_API.md`. O bloqueio de reservas continua na linha persistida da escala até o fim da transação de compra.

@@ -1,21 +1,38 @@
 package br.com.viacaocalango.api.modules.viagens.infrastructure.repository;
 
 import br.com.viacaocalango.api.modules.viagens.domain.entity.Viagem;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+@Repository
+@Transactional(readOnly = true)
 public class ViagemRepositoryImpl implements ViagemRepository {
-    private final Map<UUID, Viagem> dados = new LinkedHashMap<>();
+    private final ViagemJpaRepository jpa;
+    private final RotaJpaRepository rotas;
 
-    public synchronized Viagem salvar(Viagem viagem) {
-        dados.put(viagem.id(), viagem);
+    public ViagemRepositoryImpl(ViagemJpaRepository jpa, RotaJpaRepository rotas) {
+        this.jpa = jpa;
+        this.rotas = rotas;
+    }
+
+    @Override
+    @Transactional
+    public Viagem salvar(Viagem viagem) {
+        jpa.saveAndFlush(
+                new ViagemEntity(viagem, rotas.getReferenceById(viagem.rota().getId().valor())));
         return viagem;
     }
 
-    public synchronized Optional<Viagem> buscar(UUID id) {
-        return Optional.ofNullable(dados.get(id));
+    @Override
+    public Optional<Viagem> buscar(UUID id) {
+        return jpa.findById(id).map(ViagemEntity::paraDominio);
     }
 
-    public synchronized List<Viagem> listar() {
-        return new ArrayList<>(dados.values());
+    @Override
+    public List<Viagem> listar() {
+        return jpa.findAllByOrderBySequenciaAsc().stream().map(ViagemEntity::paraDominio).toList();
     }
 }

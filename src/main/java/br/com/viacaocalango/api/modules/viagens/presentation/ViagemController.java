@@ -30,7 +30,7 @@ public class ViagemController {
 
     @Operation(
             summary = "Criar viagem",
-            description = "Reutiliza a rota cadastrada. Armazenamento de Viagens em memoria.")
+            description = "Reutiliza a rota cadastrada. Viagem e rota persistidas no banco.")
     @ApiResponse(responseCode = "201", description = "Viagem criada")
     @ApiResponse(responseCode = "404", ref = RespostasApi.NAO_ENCONTRADO)
     @ApiResponse(responseCode = "422", ref = RespostasApi.DADOS_INVALIDOS)

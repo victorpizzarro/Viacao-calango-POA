@@ -29,7 +29,7 @@ public class RotaController {
     @Operation(
             summary = "Criar rota com paradas",
             description =
-                    "Km e minutos sao acumulados desde a origem; retorna os UUIDs das paradas. Cadastro em memoria.")
+                    "Km e minutos sao acumulados desde a origem; retorna os UUIDs das paradas. Cadastro persistido no banco.")
     @ApiResponse(responseCode = "201", description = "Rota criada")
     @ApiResponse(responseCode = "422", ref = RespostasApi.DADOS_INVALIDOS)
     @PostMapping
